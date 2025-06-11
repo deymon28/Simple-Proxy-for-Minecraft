@@ -55,18 +55,24 @@ allowed_lock = threading.Lock()
 
 
 # === Traffic Forwarding ===
-def forward(source, destination):
+def forward(source, destination, label):
+    total_bytes = 0
+    start_time = datetime.datetime.now()
     try:
         while True:
             data = source.recv(4096)
             if not data:
                 break
             destination.sendall(data)
+            total_bytes += len(data)
     except:
         pass
     finally:
+        duration = (datetime.datetime.now() - start_time).total_seconds()
+        log_event(f"{label} closed | Bytes: {total_bytes} | Duration: {duration:.2f}s")
         source.close()
         destination.close()
+
 
 
 # === Handle Client ===
@@ -79,8 +85,8 @@ def is_allowed(ip_str: str):
         return False
 
 def handle_client(client_sock, client_addr):
-    ip = client_addr[0]
-    log_event(f"Connection attempt from {ip}")
+    ip, port = client_addr
+    log_event(f"Connection attempt from {ip}:{port}")
 
     if not is_allowed(ip):
         log_event(f"Rejected: {ip} is not in the allowed list")
@@ -95,8 +101,13 @@ def handle_client(client_sock, client_addr):
         return
 
     log_event(f"Connection from {ip} accepted and forwarded")
-    threading.Thread(target=forward, args=(client_sock, server_sock), daemon=True).start()
-    threading.Thread(target=forward, args=(server_sock, client_sock), daemon=True).start()
+    log_event(f"{ip}:{port} connected -> {DEST_HOST}:{DEST_PORT}")
+
+    # threading.Thread(target=forward, args=(client_sock, server_sock), daemon=True).start()
+    # threading.Thread(target=forward, args=(server_sock, client_sock), daemon=True).start()
+    threading.Thread(target=forward, args=(client_sock, server_sock, f"{ip}:{port} -> DEST"), daemon=True).start()
+    threading.Thread(target=forward, args=(server_sock, client_sock, f"DEST -> {ip}:{port}"), daemon=True).start()
+
 
 
 # === Start Proxy ===
